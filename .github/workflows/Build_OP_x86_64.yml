@@ -164,10 +164,11 @@ jobs:
         body_path: release.txt
         files: ${{ env.FIRMWARE }}/*
 
-    - name: Delete workflow runs
-      uses: GitRML/delete-workflow-runs@v1.2.2
+    - name: Delete old runs
+      uses: github/delete-workflow-runs@v1.0.0
       with:
-        retain_days: 1
+        max-age-days: 30
+        access-token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@v0.1.0
