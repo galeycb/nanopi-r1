@@ -39,7 +39,7 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v2
+      uses: actions/checkout@v2.4.4
 
     - name: Initialization environment
       env:
@@ -165,7 +165,7 @@ jobs:
         files: ${{ env.FIRMWARE }}/*
 
     - name: Delete workflow runs
-      uses: GitRML/delete-workflow-runs@v1
+      uses: GitRML/delete-workflow-runs@v1.0.0
       with:
         retain_days: 1
 
