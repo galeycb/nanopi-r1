@@ -167,8 +167,9 @@ jobs:
     - name: Delete old runs
       uses: Mattraks/delete-workflow-runs@v2
       with:
-        max-age-days: 30
         access-token: ${{ secrets.GITHUB_TOKEN }}
+        retain_days: 90
+        keep_minimum_runs: 6
 
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@v0.1.0
