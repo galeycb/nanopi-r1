@@ -188,6 +188,7 @@ jobs:
       continue-on-error: true
       with:
         token: ${{ secrets.PAT_TOKEN }}
+        workflow_id: Build_x86_64_test
         retain_days: 90
         keep_minimum_runs: 10
 
