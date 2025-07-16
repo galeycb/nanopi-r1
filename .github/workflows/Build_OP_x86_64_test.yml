@@ -26,14 +26,21 @@ on:
         options:
           - test_x86_64_min.config
           - test_n3450_x86_64_min_kmod-nft-compat.config
-
+      enable_wrtbwmon:
+        description: '是否启用 wrtbwmon 插件'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
   CONFIG_PATH: configs
   CONFIG_FILE: ${{ github.event.inputs.config_name }}
-  DIY_P1_SH: diy-part1-nanopi-r1.sh
+  DIY_P1_SH: ${{ github.event.inputs.enable_wrtbwmon == 'true' && 'diy-part1-wrtbwmon.sh' || 'diy-part1-nanopi-r1.sh' }}
   DIY_P2_SH: diy-part2.sh
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
