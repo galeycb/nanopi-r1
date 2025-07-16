@@ -187,8 +187,9 @@ jobs:
       uses: Mattraks/delete-workflow-runs@main
       continue-on-error: true
       with:
-        retain_days: 1
-        keep_minimum_runs: 0
+        token: ${{ secrets.PAT_TOKEN }}
+        retain_days: 90
+        keep_minimum_runs: 10
 
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@master
