@@ -191,13 +191,13 @@ jobs:
         files: ${{ env.FIRMWARE }}/*
 
     - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@main
+      uses: Mattraks/delete-workflow-runs@v2    # 建议固定到 v2 而不是 @main，v2发布日期 2024‑02‑09
       continue-on-error: true
       with:
         token: ${{ secrets.PAT_TOKEN }}
-        workflow_id: Build_x86_64_test
         retain_days: 90
         keep_minimum_runs: 10
+        delete_workflow_pattern: ^Build_x86_64_test$   # 精确匹配当前 workflow 名
 
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@master
