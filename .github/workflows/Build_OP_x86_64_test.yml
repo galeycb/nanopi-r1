@@ -97,7 +97,21 @@ jobs:
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
-
+        
+    - name: Set firmware suffix                # ← 新增
+      run: |
+        case "${{ github.event.inputs.config_name }}" in
+          test_x86_64_min.config)
+            echo "CFG_SUFFIX=_min" >> $GITHUB_ENV      # 生成 _min 后缀
+            ;;
+          test_n3450_x86_64_min_kmod-nft-compat.config)
+            echo "CFG_SUFFIX=_nft" >> $GITHUB_ENV   # 生成 _n3450_nft 后缀
+            ;;
+          *)
+            echo "CFG_SUFFIX=" >> $GITHUB_ENV          # 其它配置无后缀
+            ;;
+        esac
+        
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@v1.0.0
       if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
@@ -133,7 +147,7 @@ jobs:
       uses: actions/upload-artifact@main
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
-        name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}   # ← 加后缀
         path: openwrt/bin
 
     - name: Organize files
@@ -149,7 +163,7 @@ jobs:
       uses: actions/upload-artifact@main
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}   # ← 加后缀
         path: ${{ env.FIRMWARE }}
 
     - name: Upload firmware to cowtransfer
@@ -157,7 +171,9 @@ jobs:
       if: steps.organize.outputs.status == 'success' && env.UPLOAD_COWTRANSFER == 'true' && !cancelled()
       run: |
         curl -fsSL git.io/file-transfer | sh
-        ./transfer cow --block 2621440 -s -p 64 --no-progress ${FIRMWARE} 2>&1 | tee cowtransfer.log
+        # ./transfer cow --block 2621440 -s -p 64 --no-progress ${FIRMWARE} 2>&1 | tee cowtransfer.log
+        tar -czf firmware${CFG_SUFFIX}.tar.gz -C "$(dirname "$FIRMWARE")" "$(basename "$FIRMWARE")"   # ← 打包并加后缀
+        ./transfer cow --block 2621440 -s -p 64 --no-progress firmware${CFG_SUFFIX}.tar.gz 2>&1 | tee cowtransfer.log
         echo "::warning file=cowtransfer.com::$(cat cowtransfer.log | grep https)"
         echo "url=$(cat cowtransfer.log | grep https | cut -f3 -d' ')" >> $GITHUB_OUTPUT
 
@@ -166,7 +182,12 @@ jobs:
       if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
       run: |
         curl -fsSL git.io/file-transfer | sh
-        ./transfer wet -s -p 16 --no-progress ${FIRMWARE} 2>&1 | tee wetransfer.log
+        # ./transfer wet -s -p 16 --no-progress ${FIRMWARE} 2>&1 | tee wetransfer.log
+        # 打包 firmware 目录，并把 CFG_SUFFIX 拼进文件名
+        tar -czf firmware${CFG_SUFFIX}.tar.gz -C "$(dirname "$FIRMWARE")" "$(basename "$FIRMWARE")"
+        # 上传打好的压缩包
+        ./transfer wet -s -p 16 --no-progress firmware${CFG_SUFFIX}.tar.gz 2>&1 | tee wetransfer.log
+        # 输出链接到日志和 GITHUB_OUTPUT
         echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
         echo "url=$(cat wetransfer.log | grep https | cut -f3 -d' ')" >> $GITHUB_OUTPUT
 
@@ -174,7 +195,7 @@ jobs:
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
-        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+        echo "release_tag=$(date +"%Y.%m.%d-%H%M")${CFG_SUFFIX}" >> $GITHUB_OUTPUT    # ← 加后缀
         touch release.txt
         [ $UPLOAD_COWTRANSFER = true ] && echo "🔗 [Cowtransfer](${{ steps.cowtransfer.outputs.url }})" >> release.txt
         [ $UPLOAD_WETRANSFER = true ] && echo "🔗 [WeTransfer](${{ steps.wetransfer.outputs.url }})" >> release.txt
