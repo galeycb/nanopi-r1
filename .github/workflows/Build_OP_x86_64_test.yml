@@ -26,6 +26,7 @@ on:
         options:
           - test_x86_64_min.config
           - test_n3450_x86_64_min_kmod-nft-compat.config
+          - lean_orig_x64.config
       enable_wrtbwmon:
         description: '是否启用 wrtbwmon 插件'
         required: true
@@ -106,6 +107,9 @@ jobs:
             ;;
           test_n3450_x86_64_min_kmod-nft-compat.config)
             echo "CFG_SUFFIX=_nft" >> $GITHUB_ENV   # 生成 _n3450_nft 后缀
+            ;;
+          lean_orig_x64.config)
+            echo "CFG_SUFFIX=_lean_orig" >> $GITHUB_ENV   # 生成 _lean_orig 后缀
             ;;
           *)
             echo "CFG_SUFFIX=" >> $GITHUB_ENV          # 其它配置无后缀
