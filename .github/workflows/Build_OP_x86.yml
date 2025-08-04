@@ -18,13 +18,28 @@ on:
         description: 'SSH connection to Actions'
         required: false
         default: 'false'
-
+      config_name:
+        description: 'Select .config file in configs/'
+        required: true
+        default: 'lean_orig_x86_generic.config'
+        type: choice
+        options:
+          - lean_orig_x86_generic.config
+      enable_wrtbwmon:
+        description: '是否启用 wrtbwmon 插件'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: n3450_x86_min.config
-  DIY_P1_SH: diy-part1-nanopi-r1.sh
+  CONFIG_PATH: configs
+  CONFIG_FILE: ${{ github.event.inputs.config_name }}
+  DIY_P1_SH: ${{ github.event.inputs.enable_wrtbwmon == 'true' && 'diy-part1-wrtbwmon.sh' || 'diy-part1-nanopi-r1.sh' }}
   DIY_P2_SH: diy-part2.sh
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
@@ -36,8 +51,25 @@ env:
 jobs:
   build:
     runs-on: ubuntu-22.04
-
+        
     steps:
+    
+    - name: Free Disk Space (Ubuntu)
+      uses: jlumbroso/free-disk-space@main
+      with:
+        # this might remove tools that are actually needed,
+        # if set to "true" but frees about 6 GB
+        tool-cache: true
+        
+        # all of these default to true, but feel free to set to
+        # "false" if necessary for your workflow
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: true
+
     - name: Checkout
       uses: actions/checkout@v3
 
@@ -77,11 +109,28 @@ jobs:
     - name: Load custom configuration
       run: |
         [ -e files ] && mv files openwrt/files
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        [ -e ${CONFIG_PATH}/${CONFIG_FILE} ] && mv ${CONFIG_PATH}/${CONFIG_FILE} openwrt/.config
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
-
+        
+    - name: Set firmware suffix                # ← 新增
+      run: |
+        case "${{ github.event.inputs.config_name }}" in
+          test_x86_64_min.config)
+            echo "CFG_SUFFIX=_min" >> $GITHUB_ENV      # 生成 _min 后缀
+            ;;
+          test_n3450_x86_64_min_kmod-nft-compat.config)
+            echo "CFG_SUFFIX=_nft" >> $GITHUB_ENV   # 生成 _n3450_nft 后缀
+            ;;
+          lean_orig_x64.config)
+            echo "CFG_SUFFIX=_lean_orig" >> $GITHUB_ENV   # 生成 _lean_orig 后缀
+            ;;
+          *)
+            echo "CFG_SUFFIX=" >> $GITHUB_ENV          # 其它配置无后缀
+            ;;
+        esac
+        
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@v1.0.0
       if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
@@ -117,7 +166,7 @@ jobs:
       uses: actions/upload-artifact@main
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
-        name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}   # ← 加后缀
         path: openwrt/bin
 
     - name: Organize files
@@ -133,7 +182,7 @@ jobs:
       uses: actions/upload-artifact@main
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
-        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}   # ← 加后缀
         path: ${{ env.FIRMWARE }}
 
     - name: Upload firmware to cowtransfer
@@ -141,7 +190,9 @@ jobs:
       if: steps.organize.outputs.status == 'success' && env.UPLOAD_COWTRANSFER == 'true' && !cancelled()
       run: |
         curl -fsSL git.io/file-transfer | sh
-        ./transfer cow --block 2621440 -s -p 64 --no-progress ${FIRMWARE} 2>&1 | tee cowtransfer.log
+        # ./transfer cow --block 2621440 -s -p 64 --no-progress ${FIRMWARE} 2>&1 | tee cowtransfer.log
+        tar -czf firmware${CFG_SUFFIX}.tar.gz -C "$(dirname "$FIRMWARE")" "$(basename "$FIRMWARE")"   # ← 打包并加后缀
+        ./transfer cow --block 2621440 -s -p 64 --no-progress firmware${CFG_SUFFIX}.tar.gz 2>&1 | tee cowtransfer.log
         echo "::warning file=cowtransfer.com::$(cat cowtransfer.log | grep https)"
         echo "url=$(cat cowtransfer.log | grep https | cut -f3 -d' ')" >> $GITHUB_OUTPUT
 
@@ -150,7 +201,12 @@ jobs:
       if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
       run: |
         curl -fsSL git.io/file-transfer | sh
-        ./transfer wet -s -p 16 --no-progress ${FIRMWARE} 2>&1 | tee wetransfer.log
+        # ./transfer wet -s -p 16 --no-progress ${FIRMWARE} 2>&1 | tee wetransfer.log
+        # 打包 firmware 目录，并把 CFG_SUFFIX 拼进文件名
+        tar -czf firmware${CFG_SUFFIX}.tar.gz -C "$(dirname "$FIRMWARE")" "$(basename "$FIRMWARE")"
+        # 上传打好的压缩包
+        ./transfer wet -s -p 16 --no-progress firmware${CFG_SUFFIX}.tar.gz 2>&1 | tee wetransfer.log
+        # 输出链接到日志和 GITHUB_OUTPUT
         echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
         echo "url=$(cat wetransfer.log | grep https | cut -f3 -d' ')" >> $GITHUB_OUTPUT
 
@@ -158,7 +214,7 @@ jobs:
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
-        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+        echo "release_tag=$(date +"%Y.%m.%d-%H%M")${CFG_SUFFIX}" >> $GITHUB_OUTPUT    # ← 加后缀
         touch release.txt
         [ $UPLOAD_COWTRANSFER = true ] && echo "🔗 [Cowtransfer](${{ steps.cowtransfer.outputs.url }})" >> release.txt
         [ $UPLOAD_WETRANSFER = true ] && echo "🔗 [WeTransfer](${{ steps.wetransfer.outputs.url }})" >> release.txt
@@ -175,11 +231,13 @@ jobs:
         files: ${{ env.FIRMWARE }}/*
 
     - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@main
+      uses: Mattraks/delete-workflow-runs@v2    # 建议固定到 v2 而不是 @main，v2发布日期 2024‑02‑09
       continue-on-error: true
       with:
-        retain_days: 1
-        keep_minimum_runs: 0
+        token: ${{ secrets.PAT_TOKEN }}
+        retain_days: 90
+        keep_minimum_runs: 10
+        delete_workflow_pattern: ^Build_x86$   # 精确匹配当前 workflow 名
 
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@master
