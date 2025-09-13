@@ -20,8 +20,8 @@
 # echo 'src-git kenzo https://github.com/kenzok8/openwrt-packages' >>feeds.conf.default
 # echo 'src-git small https://github.com/kenzok8/small' >>feeds.conf.default
 # sed -i "/helloworld/d" "feeds.conf.default"
-# kernel: bump 6.12 to 6.12.43 已包含 helloworld
-# echo "src-git helloworld https://github.com/fw876/helloworld.git" >> "feeds.conf.default"
+# kernel: bump 6.12 to 6.12.43 已包含 helloworld，9月有不包含了？
+echo "src-git helloworld https://github.com/fw876/helloworld.git" >> "feeds.conf.default"
 # echo 'src-git passwallluci https://github.com/xiaorouji/openwrt-passwall;luci' >>feeds.conf.default
 # echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall;packages' >>feeds.conf.default
 # echo 'src-git kenzo https://github.com/kenzok8/openwrt-packages' >>feeds.conf.default
