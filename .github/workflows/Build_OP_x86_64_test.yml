@@ -35,6 +35,12 @@ on:
         options:
           - 'true'
           - 'false'
+
+# ★ 新增：为内置 GITHUB_TOKEN 开写权限（actions:write 用于删除旧 workflow）
+permissions:
+  contents: write
+  actions: write
+
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
   REPO_BRANCH: master
@@ -233,13 +239,15 @@ jobs:
         files: ${{ env.FIRMWARE }}/*
 
     - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@v2    # 建议固定到 v2 而不是 @main，v2发布日期 2024‑02‑09
+      uses: Mattraks/delete-workflow-runs@v2    # 建议固定到 v2 而不是 @main
       continue-on-error: true
+      if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'   # ★ 新增条件，避免PR触发
       with:
-        token: ${{ secrets.PAT_TOKEN }}
+        token: ${{ github.token }}              # ★ 改用内置 github.token，不再依赖过期 PAT
         retain_days: 90
         keep_minimum_runs: 10
         delete_workflow_pattern: ^Build_x86_64_test$   # 精确匹配当前 workflow 名
+        repository: ${{ github.repository }}
 
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@master
@@ -249,4 +257,3 @@ jobs:
         delete_tags: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
