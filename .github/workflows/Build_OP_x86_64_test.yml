@@ -80,8 +80,11 @@ jobs:
           # 关键修改：false 表示不删除 Swap 所占用的磁盘空间。
           swap-storage: false
 
+      # actions/checkout@v3 使用 Node.js 20，会触发弃用警告。
+      # v5 已切换到 Node.js 24，适用于 GitHub 托管 Runner。
+      # 如果以后改为自托管 Runner，需要确保 Runner 版本不低于 v2.327.1。
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
 
       - name: Initialization environment
         env:
@@ -179,6 +182,20 @@ jobs:
           df -hT
           du -sh dl build_dir staging_dir 2>/dev/null || true
 
+      # ============================================================
+      # 临时诊断步骤：每 60 秒输出一次资源状态。
+      #
+      # 当前建议：
+      #   先保留此步骤，再连续成功编译 2～3 次。
+      #
+      # 后续精简方法：
+      #   如果连续编译稳定，可把从下面的
+      #     - name: Start resource monitor
+      #   到该步骤末尾的整个 YAML 块删除。
+      #
+      # 删除本步骤不会影响 OpenWrt 编译，只会减少 Actions 日志。
+      # 编译前、编译后的 free/swapon/df 检查仍会保留。
+      # ============================================================
       - name: Start resource monitor
         run: |
           (
@@ -220,6 +237,9 @@ jobs:
           free -h
           swapon --show || true
 
+      # 后续维护建议：
+      # 若这里以后也出现 Node.js 20 警告，可将 @main 固定为 @v6。
+      # 当前先不改动上传逻辑，以减少本次对照版本的变量。
       - name: Upload bin directory
         uses: actions/upload-artifact@main
         if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
@@ -236,6 +256,7 @@ jobs:
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
           echo "status=success" >> $GITHUB_OUTPUT
 
+      # 同上：如出现 upload-artifact 的 Node.js 20 警告，可改为 @v6。
       - name: Upload firmware directory
         uses: actions/upload-artifact@main
         if: steps.organize.outputs.status == 'success' && !cancelled()
