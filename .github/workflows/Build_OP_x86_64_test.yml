@@ -143,6 +143,17 @@ jobs:
           cd openwrt
           $GITHUB_WORKSPACE/$DIY_P2_SH
 
+      - name: Enable wrtbwmon packages
+        if: github.event.inputs.enable_wrtbwmon == 'true'
+        run: |
+          cat >> openwrt/.config <<'EOF'
+          CONFIG_PACKAGE_luci-app-wrtbwmon=y
+          CONFIG_PACKAGE_wrtbwmon=y
+          CONFIG_PACKAGE_kmod-nft-compat=y
+          CONFIG_PACKAGE_iptables=y
+          CONFIG_PACKAGE_ip6tables=y
+          EOF
+
       - name: Set firmware suffix
         run: |
           case "${{ github.event.inputs.config_name }}" in
