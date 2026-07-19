@@ -252,7 +252,7 @@ jobs:
     - name: Delete workflow runs
       uses: Mattraks/delete-workflow-runs@v2    # 建议固定到 v2 而不是 @main，v2发布日期 2024‑02‑09
       continue-on-error: true
-      if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+      if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
       with:
         token: ${{ github.token }}
         retain_days: 90

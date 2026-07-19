@@ -318,7 +318,7 @@ jobs:
       - name: Delete workflow runs
         uses: Mattraks/delete-workflow-runs@v2
         continue-on-error: true
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         with:
           token: ${{ github.token }}
           retain_days: 90
