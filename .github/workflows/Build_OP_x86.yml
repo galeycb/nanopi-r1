@@ -68,7 +68,7 @@ jobs:
         haskell: true
         large-packages: true
         docker-images: true
-        swap-storage: true
+        swap-storage: false
 
     - name: Checkout
       uses: actions/checkout@v3
@@ -113,10 +113,24 @@ jobs:
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
+
+    - name: Enable wrtbwmon packages
+      if: github.event.inputs.enable_wrtbwmon == 'true'
+      run: |
+        cat >> openwrt/.config <<'EOF'
+        CONFIG_PACKAGE_luci-app-wrtbwmon=y
+        CONFIG_PACKAGE_wrtbwmon=y
+        CONFIG_PACKAGE_kmod-nft-compat=y
+        CONFIG_PACKAGE_iptables=y
+        CONFIG_PACKAGE_ip6tables=y
+        EOF
         
     - name: Set firmware suffix                # ← 新增
       run: |
         case "${{ github.event.inputs.config_name }}" in
+          lean_orig_x86_generic.config)
+            echo "CFG_SUFFIX=_lean_x86" >> $GITHUB_ENV
+            ;;
           test_x86_64_min.config)
             echo "CFG_SUFFIX=_min" >> $GITHUB_ENV      # 生成 _min 后缀
             ;;
