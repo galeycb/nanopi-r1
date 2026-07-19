@@ -76,7 +76,7 @@ jobs:
         swap-storage: false
 
     - name: Checkout
-      uses: actions/checkout@v7
+      uses: actions/checkout@v5
 
     - name: Initialization environment
       env:
@@ -252,6 +252,7 @@ jobs:
     - name: Delete workflow runs
       uses: Mattraks/delete-workflow-runs@v2    # 建议固定到 v2 而不是 @main，v2发布日期 2024‑02‑09
       continue-on-error: true
+      if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
       with:
         token: ${{ github.token }}
         retain_days: 90
