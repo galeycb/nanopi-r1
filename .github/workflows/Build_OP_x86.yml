@@ -33,6 +33,11 @@ on:
         options:
           - 'true'
           - 'false'
+
+permissions:
+  contents: write
+  actions: write
+
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
   REPO_BRANCH: master
@@ -71,7 +76,7 @@ jobs:
         swap-storage: false
 
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v7
 
     - name: Initialization environment
       env:
@@ -177,7 +182,7 @@ jobs:
       run: df -hT
 
     - name: Upload bin directory
-      uses: actions/upload-artifact@main
+      uses: actions/upload-artifact@v7
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
         name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}   # ← 加后缀
@@ -193,7 +198,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware directory
-      uses: actions/upload-artifact@main
+      uses: actions/upload-artifact@v7
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}   # ← 加后缀
@@ -248,7 +253,7 @@ jobs:
       uses: Mattraks/delete-workflow-runs@v2    # 建议固定到 v2 而不是 @main，v2发布日期 2024‑02‑09
       continue-on-error: true
       with:
-        token: ${{ secrets.PAT_TOKEN }}
+        token: ${{ github.token }}
         retain_days: 90
         keep_minimum_runs: 10
         delete_workflow_pattern: ^Build_x86$   # 精确匹配当前 workflow 名
