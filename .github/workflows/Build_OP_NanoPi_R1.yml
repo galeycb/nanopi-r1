@@ -18,13 +18,25 @@ on:
         description: 'SSH connection to Actions'
         required: false
         default: 'false'
+      enable_wrtbwmon:
+        description: '是否启用 wrtbwmon 插件'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  contents: write
+  actions: write
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
   REPO_BRANCH: master
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: NanoPi_R1.config
-  DIY_P1_SH: diy-part1-nanopi-r1.sh
+  DIY_P1_SH: ${{ github.event.inputs.enable_wrtbwmon == 'true' && 'diy-part1-wrtbwmon.sh' || 'diy-part1-nanopi-r1.sh' }}
   DIY_P2_SH: diy-part2.sh
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
@@ -56,7 +68,7 @@ jobs:
         swap-storage: true
         
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
 
     - name: Initialization environment
       env:
@@ -98,6 +110,18 @@ jobs:
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
+
+    - name: Enable wrtbwmon packages
+      if: github.event.inputs.enable_wrtbwmon == 'true'
+      run: |
+        cat >> openwrt/.config <<'EOF'
+        CONFIG_PACKAGE_luci-app-wrtbwmon=y
+        CONFIG_PACKAGE_luci-i18n-wrtbwmon-zh-cn=y
+        CONFIG_PACKAGE_wrtbwmon=y
+        CONFIG_PACKAGE_kmod-nft-compat=y
+        CONFIG_PACKAGE_iptables=y
+        CONFIG_PACKAGE_ip6tables=y
+        EOF
 
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@v1.0.0
@@ -192,11 +216,14 @@ jobs:
         files: ${{ env.FIRMWARE }}/*
 
     - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@main
+      uses: Mattraks/delete-workflow-runs@v2
       continue-on-error: true
+      if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
       with:
-        retain_days: 1
-        keep_minimum_runs: 0
+        token: ${{ github.token }}
+        retain_days: 90
+        keep_minimum_runs: 10
+        delete_workflow_pattern: ^Build_NanoPi_R1$
 
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@master
