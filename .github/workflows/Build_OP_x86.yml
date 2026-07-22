@@ -33,6 +33,14 @@ on:
         options:
           - 'true'
           - 'false'
+      enable_passwall:
+        description: 'Enable PassWall'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 permissions:
   contents: write
@@ -129,7 +137,29 @@ jobs:
         CONFIG_PACKAGE_iptables=y
         CONFIG_PACKAGE_ip6tables=y
         EOF
-        
+
+    - name: Enable PassWall packages
+      if: github.event.inputs.enable_passwall == 'true'
+      run: |
+        cat >> openwrt/.config <<'EOF'
+        CONFIG_PACKAGE_luci-app-passwall=y
+        CONFIG_PACKAGE_luci-i18n-passwall-zh-cn=y
+        CONFIG_PACKAGE_luci-app-passwall_Transparent_Proxy=y
+        CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ChinaDNS_NG=y
+        CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Client=y
+        CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray=y
+        CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Trojan_Plus=y
+        EOF
+
+    - name: Show selected configuration
+      run: |
+        echo "Target selection:"
+        grep '^CONFIG_TARGET.*=y' openwrt/.config | head -50 || true
+        echo "Optional packages:"
+        grep '^CONFIG_PACKAGE_luci-app-wrtbwmon=y' openwrt/.config || true
+        grep '^CONFIG_PACKAGE_luci-app-passwall=y' openwrt/.config || true
+        grep '^CONFIG_PACKAGE_luci-app-ssr-plus=y' openwrt/.config || true
+
     - name: Set firmware suffix                # ← 新增
       run: |
         case "${{ github.event.inputs.config_name }}" in
