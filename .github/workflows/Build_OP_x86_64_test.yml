@@ -50,6 +50,14 @@ on:
         options:
           - 'false'
           - 'true'
+      enable_autosamba:
+        description: 'Enable autosamba/KSMBD'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 permissions:
   contents: write
@@ -175,6 +183,39 @@ jobs:
           CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Trojan_Plus=y
           EOF
 
+      - name: Disable autosamba/KSMBD packages
+        if: github.event.inputs.enable_autosamba != 'true'
+        run: |
+          sed -i \
+            -e '/^CONFIG_DEFAULT_autosamba=/d' \
+            -e '/^# CONFIG_DEFAULT_autosamba is not set/d' \
+            -e '/^CONFIG_PACKAGE_autosamba/d' \
+            -e '/^# CONFIG_PACKAGE_autosamba/d' \
+            -e '/^CONFIG_PACKAGE_kmod-fs-ksmbd=/d' \
+            -e '/^# CONFIG_PACKAGE_kmod-fs-ksmbd is not set/d' \
+            -e '/^CONFIG_PACKAGE_luci-app-ksmbd=/d' \
+            -e '/^# CONFIG_PACKAGE_luci-app-ksmbd is not set/d' \
+            -e '/^CONFIG_PACKAGE_luci-i18n-ksmbd-/d' \
+            -e '/^# CONFIG_PACKAGE_luci-i18n-ksmbd-/d' \
+            -e '/^CONFIG_PACKAGE_ksmbd-/d' \
+            -e '/^# CONFIG_PACKAGE_ksmbd-/d' \
+            -e '/^CONFIG_PACKAGE_wsdd2=/d' \
+            -e '/^# CONFIG_PACKAGE_wsdd2 is not set/d' \
+            openwrt/.config
+          cat >> openwrt/.config <<'EOF'
+          # CONFIG_DEFAULT_autosamba is not set
+          # CONFIG_PACKAGE_autosamba is not set
+          # CONFIG_PACKAGE_autosamba_INCLUDE_KSMBD is not set
+          # CONFIG_PACKAGE_kmod-fs-ksmbd is not set
+          # CONFIG_PACKAGE_luci-app-ksmbd is not set
+          # CONFIG_PACKAGE_luci-i18n-ksmbd-zh-cn is not set
+          # CONFIG_PACKAGE_ksmbd-avahi-service is not set
+          # CONFIG_PACKAGE_ksmbd-hotplug is not set
+          # CONFIG_PACKAGE_ksmbd-server is not set
+          # CONFIG_PACKAGE_ksmbd-utils is not set
+          # CONFIG_PACKAGE_wsdd2 is not set
+          EOF
+
       - name: Show selected configuration
         run: |
           echo "Target selection:"
@@ -183,6 +224,7 @@ jobs:
           grep '^CONFIG_PACKAGE_luci-app-wrtbwmon=y' openwrt/.config || true
           grep '^CONFIG_PACKAGE_luci-app-passwall=y' openwrt/.config || true
           grep '^CONFIG_PACKAGE_luci-app-ssr-plus=y' openwrt/.config || true
+          grep -E '^(CONFIG_PACKAGE_autosamba=y|# CONFIG_PACKAGE_autosamba is not set)' openwrt/.config || true
 
       - name: Set firmware suffix
         run: |
@@ -213,6 +255,11 @@ jobs:
         run: |
           cd openwrt
           make defconfig
+          echo "Final autosamba/KSMBD selection:"
+          grep -E '^(CONFIG_PACKAGE_autosamba=y|# CONFIG_PACKAGE_autosamba is not set)' .config || true
+          grep -E '^(CONFIG_PACKAGE_luci-app-ksmbd=y|# CONFIG_PACKAGE_luci-app-ksmbd is not set)' .config || true
+          grep -E '^(CONFIG_PACKAGE_ksmbd-server=y|# CONFIG_PACKAGE_ksmbd-server is not set)' .config || true
+          grep -E '^(CONFIG_PACKAGE_wsdd2=y|# CONFIG_PACKAGE_wsdd2 is not set)' .config || true
           make download -j8
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
