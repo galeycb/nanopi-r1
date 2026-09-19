@@ -19,12 +19,15 @@
 # echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
 # echo 'src-git kenzo https://github.com/kenzok8/openwrt-packages' >>feeds.conf.default
 # echo 'src-git small https://github.com/kenzok8/small' >>feeds.conf.default
-# sed -i "/helloworld/d" "feeds.conf.default"
+# Lean may already provide helloworld in feeds.conf.default. Keep exactly one
+# entry so feeds update works with either source layout.
+sed -i '/^[[:space:]]*src-git[[:space:]]\+helloworld[[:space:]]/d' "feeds.conf.default"
 echo "src-git helloworld https://github.com/fw876/helloworld.git" >> "feeds.conf.default"
 # echo 'src-git passwallluci https://github.com/xiaorouji/openwrt-passwall;luci' >>feeds.conf.default
 # echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall;packages' >>feeds.conf.default
 # echo 'src-git kenzo https://github.com/kenzok8/openwrt-packages' >>feeds.conf.default
 # echo 'src-git small https://github.com/kenzok8/small' >>feeds.conf.default
 # 添加 wrtbwmon 源（分支 luci-app-wrtbwmon-v1.0.1-r1）
+sed -i '/^[[:space:]]*src-git[[:space:]]\+wrtbwmon[[:space:]]/d' "feeds.conf.default"
 echo "src-git wrtbwmon https://github.com/gitbruc/openwrt-wrtbwmon;luci-app-wrtbwmon-v1.0.1-r1" >> "feeds.conf.default"
 

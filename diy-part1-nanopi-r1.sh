@@ -19,8 +19,9 @@
 # echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
 # echo 'src-git kenzo https://github.com/kenzok8/openwrt-packages' >>feeds.conf.default
 # echo 'src-git small https://github.com/kenzok8/small' >>feeds.conf.default
-# sed -i "/helloworld/d" "feeds.conf.default"
-# kernel: bump 6.12 to 6.12.43 已包含 helloworld，9月有不包含了？
+# Lean may already provide helloworld in feeds.conf.default. Keep exactly one
+# entry so feeds update works with either source layout.
+sed -i '/^[[:space:]]*src-git[[:space:]]\+helloworld[[:space:]]/d' "feeds.conf.default"
 echo "src-git helloworld https://github.com/fw876/helloworld.git" >> "feeds.conf.default"
 # echo 'src-git passwallluci https://github.com/xiaorouji/openwrt-passwall;luci' >>feeds.conf.default
 # echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall;packages' >>feeds.conf.default
