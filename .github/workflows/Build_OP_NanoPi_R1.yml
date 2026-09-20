@@ -34,6 +34,14 @@ on:
         options:
           - 'false'
           - 'true'
+      enable_ftp:
+        description: 'Enable FTP server (vsftpd)'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 permissions:
   contents: write
@@ -156,6 +164,19 @@ jobs:
         CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Trojan_Plus=y
         EOF
 
+    - name: Enable FTP packages
+      if: github.event.inputs.enable_ftp == 'true'
+      run: |
+        cat >> openwrt/.config <<'EOF'
+        CONFIG_DEFAULT_luci-app-vsftpd=y
+        CONFIG_PACKAGE_luci-app-vsftpd=y
+        CONFIG_PACKAGE_luci-i18n-vsftpd-zh-cn=y
+        # CONFIG_PACKAGE_vsftpd is not set
+        CONFIG_PACKAGE_vsftpd-alt=y
+        CONFIG_VSFTPD_USE_UCI_SCRIPTS=y
+        # CONFIG_PACKAGE_vsftpd-tls is not set
+        EOF
+
     - name: Show selected configuration
       run: |
         echo "Target selection:"
@@ -163,6 +184,7 @@ jobs:
         echo "Optional packages:"
         grep '^CONFIG_PACKAGE_luci-app-wrtbwmon=y' openwrt/.config || true
         grep '^CONFIG_PACKAGE_luci-app-passwall=y' openwrt/.config || true
+        grep '^CONFIG_PACKAGE_luci-app-vsftpd=y' openwrt/.config || true
         grep '^CONFIG_PACKAGE_luci-app-ssr-plus=y' openwrt/.config || true
 
     - name: SSH connection to Actions

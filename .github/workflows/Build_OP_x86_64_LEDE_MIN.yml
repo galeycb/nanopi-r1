@@ -18,6 +18,14 @@ on:
         description: 'SSH connection to Actions'
         required: false
         default: 'false'
+      enable_ftp:
+        description: 'Enable FTP server (vsftpd)'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
@@ -96,7 +104,20 @@ jobs:
         chmod +x $DIY_P2_SH
         cd openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
-    
+
+    - name: Enable FTP packages
+      if: github.event.inputs.enable_ftp == 'true'
+      run: |
+        cat >> openwrt/.config <<'EOF'
+        CONFIG_DEFAULT_luci-app-vsftpd=y
+        CONFIG_PACKAGE_luci-app-vsftpd=y
+        CONFIG_PACKAGE_luci-i18n-vsftpd-zh-cn=y
+        # CONFIG_PACKAGE_vsftpd is not set
+        CONFIG_PACKAGE_vsftpd-alt=y
+        CONFIG_VSFTPD_USE_UCI_SCRIPTS=y
+        # CONFIG_PACKAGE_vsftpd-tls is not set
+        EOF
+
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@v1.0.0
       if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
