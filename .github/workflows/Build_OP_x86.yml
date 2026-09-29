@@ -355,23 +355,23 @@ jobs:
           echo "FIRMWARE=$FIRMWARE_DIR" >> $GITHUB_ENV
           echo "status=success" >> $GITHUB_OUTPUT
 
-      - name: Package standalone IPK repository
-        if: steps.compile.outputs.status == 'success' && !cancelled()
-        run: |
-          cd openwrt
-          PACKAGE_DIR="$GITHUB_WORKSPACE/standalone-packages"
-          bash "$GITHUB_WORKSPACE/scripts/build-standalone-packages.sh" "$GITHUB_WORKSPACE/openwrt" "$PACKAGE_DIR"
-          cp .config "$PACKAGE_DIR/config"
-          find bin/targets -type f \( -name config.buildinfo -o -name feeds.buildinfo \) -exec cp {} "$PACKAGE_DIR/" \; 2>/dev/null || true
-          tar -czf "$GITHUB_WORKSPACE/OpenWrt_packages${DEVICE_NAME}${CFG_SUFFIX}${FILE_DATE}.tar.gz" -C "$GITHUB_WORKSPACE" standalone-packages
+    - name: Package standalone IPK repository
+      if: steps.compile.outputs.status == 'success' && !cancelled()
+      run: |
+        cd openwrt
+        PACKAGE_DIR="$GITHUB_WORKSPACE/standalone-packages"
+        bash "$GITHUB_WORKSPACE/scripts/build-standalone-packages.sh" "$GITHUB_WORKSPACE/openwrt" "$PACKAGE_DIR"
+        cp .config "$PACKAGE_DIR/config"
+        find bin/targets -type f \( -name config.buildinfo -o -name feeds.buildinfo \) -exec cp {} "$PACKAGE_DIR/" \; 2>/dev/null || true
+        tar -czf "$GITHUB_WORKSPACE/OpenWrt_packages${DEVICE_NAME}${CFG_SUFFIX}${FILE_DATE}.tar.gz" -C "$GITHUB_WORKSPACE" standalone-packages
 
-      - name: Upload standalone packages
-        uses: actions/upload-artifact@v7
-        if: steps.compile.outputs.status == 'success' && !cancelled()
-        with:
-          name: OpenWrt_packages${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}
-          path: |
-            OpenWrt_packages${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}.tar.gz
+    - name: Upload standalone packages
+      uses: actions/upload-artifact@v7
+      if: steps.compile.outputs.status == 'success' && !cancelled()
+      with:
+        name: OpenWrt_packages${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}
+        path: |
+          OpenWrt_packages${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}.tar.gz
 
     - name: Upload firmware directory
       uses: actions/upload-artifact@v7
