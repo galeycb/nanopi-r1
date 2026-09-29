@@ -66,14 +66,6 @@ on:
         options:
           - 'false'
           - 'true'
-      enable_wireguard:
-        description: 'Enable WireGuard client and LuCI support'
-        required: true
-        default: 'false'
-        type: choice
-        options:
-          - 'false'
-          - 'true'
 
 permissions:
   contents: write
@@ -221,23 +213,6 @@ jobs:
           # CONFIG_PACKAGE_vsftpd-tls is not set
           EOF
 
-      - name: Enable WireGuard packages
-        if: github.event.inputs.enable_wireguard == 'true'
-        run: |
-          sed -i \
-            -e '/^CONFIG_PACKAGE_kmod-wireguard=/d' \
-            -e '/^# CONFIG_PACKAGE_kmod-wireguard is not set/d' \
-            -e '/^CONFIG_PACKAGE_wireguard-tools=/d' \
-            -e '/^# CONFIG_PACKAGE_wireguard-tools is not set/d' \
-            -e '/^CONFIG_PACKAGE_luci-proto-wireguard=/d' \
-            -e '/^# CONFIG_PACKAGE_luci-proto-wireguard is not set/d' \
-            openwrt/.config
-          cat >> openwrt/.config <<'EOF'
-          CONFIG_PACKAGE_kmod-wireguard=y
-          CONFIG_PACKAGE_wireguard-tools=y
-          CONFIG_PACKAGE_luci-proto-wireguard=y
-          EOF
-
       - name: Disable autosamba/KSMBD packages
         if: github.event.inputs.enable_autosamba != 'true'
         run: |
@@ -280,9 +255,6 @@ jobs:
           grep '^CONFIG_PACKAGE_luci-app-passwall=y' openwrt/.config || true
           grep '^CONFIG_PACKAGE_luci-app-vsftpd=y' openwrt/.config || true
           grep '^CONFIG_PACKAGE_luci-app-ssr-plus=y' openwrt/.config || true
-          grep -E '^(CONFIG_PACKAGE_kmod-wireguard=y|# CONFIG_PACKAGE_kmod-wireguard is not set)' openwrt/.config || true
-          grep -E '^(CONFIG_PACKAGE_wireguard-tools=y|# CONFIG_PACKAGE_wireguard-tools is not set)' openwrt/.config || true
-          grep -E '^(CONFIG_PACKAGE_luci-proto-wireguard=y|# CONFIG_PACKAGE_luci-proto-wireguard is not set)' openwrt/.config || true
           grep -E '^(CONFIG_PACKAGE_autosamba=y|# CONFIG_PACKAGE_autosamba is not set)' openwrt/.config || true
 
       - name: Set firmware suffix
@@ -319,15 +291,20 @@ jobs:
           grep -E '^(CONFIG_PACKAGE_luci-app-ksmbd=y|# CONFIG_PACKAGE_luci-app-ksmbd is not set)' .config || true
           grep -E '^(CONFIG_PACKAGE_ksmbd-server=y|# CONFIG_PACKAGE_ksmbd-server is not set)' .config || true
           grep -E '^(CONFIG_PACKAGE_wsdd2=y|# CONFIG_PACKAGE_wsdd2 is not set)' .config || true
-          echo "Final WireGuard selection:"
-          grep -E '^(CONFIG_PACKAGE_kmod-wireguard=y|# CONFIG_PACKAGE_kmod-wireguard is not set)' .config || true
-          grep -E '^(CONFIG_PACKAGE_wireguard-tools=y|# CONFIG_PACKAGE_wireguard-tools is not set)' .config || true
-          grep -E '^(CONFIG_PACKAGE_luci-proto-wireguard=y|# CONFIG_PACKAGE_luci-proto-wireguard is not set)' .config || true
-          if [ "${{ github.event.inputs.enable_wireguard }}" = "true" ]; then
-            grep -q '^CONFIG_PACKAGE_kmod-wireguard=y$' .config
-            grep -q '^CONFIG_PACKAGE_wireguard-tools=y$' .config
-            grep -q '^CONFIG_PACKAGE_luci-proto-wireguard=y$' .config
-          fi
+          echo "Final required package selection:"
+          grep -q '^CONFIG_PACKAGE_kmod-wireguard=y$' .config
+          grep -q '^CONFIG_PACKAGE_wireguard-tools=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-proto-wireguard=y$' .config
+          grep -q '^CONFIG_PACKAGE_iptables-mod-nat-extra=y$' .config
+          grep -q '^CONFIG_PACKAGE_kmod-ipt-nat-extra=y$' .config
+          grep -q '^CONFIG_PACKAGE_curl=y$' .config
+          grep -q '^CONFIG_PACKAGE_etherwake=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-app-wol=y$' .config
+          grep -q '^CONFIG_PACKAGE_ip-full=y$' .config
+          echo "Checking standalone package selections:"
+          for package in conntrack tcpdump ethtool iperf3 ca-bundle ca-certificates; do
+            grep -q "^CONFIG_PACKAGE_${package}=m$" .config
+          done
           make download -j8
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
@@ -386,8 +363,8 @@ jobs:
           [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
           echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
-      - name: Verify WireGuard firmware contents
-        if: steps.compile.outputs.status == 'success' && github.event.inputs.enable_wireguard == 'true'
+      - name: Verify required firmware contents
+        if: steps.compile.outputs.status == 'success'
         run: |
           cd openwrt
           MANIFEST="$(find bin/targets -type f -name '*.manifest' -print -quit)"
@@ -395,13 +372,24 @@ jobs:
             echo "::error::OpenWrt firmware manifest was not generated"
             exit 1
           fi
-          echo "Checking WireGuard packages in $MANIFEST"
-          for package in kmod-wireguard wireguard-tools luci-proto-wireguard; do
+          echo "Checking required packages in $MANIFEST"
+          for package in kmod-wireguard wireguard-tools luci-proto-wireguard iptables-mod-nat-extra kmod-ipt-nat-extra curl etherwake luci-app-wol ip-full; do
             if ! grep -Eq "^${package}([[:space:]]|$)" "$MANIFEST"; then
               echo "::error::${package} is missing from the firmware manifest"
               exit 1
             fi
             find bin -type f \( -name "*${package}*.ipk" -o -name "*${package}*.apk" \) -print | head -1
+          done
+          echo "Checking standalone packages are not included in the firmware"
+          for package in conntrack tcpdump ethtool iperf3 ca-bundle ca-certificates; do
+            if grep -Eq "^${package}([[:space:]]|$)" "$MANIFEST"; then
+              echo "::error::${package} unexpectedly appears in the firmware manifest"
+              exit 1
+            fi
+            if ! find bin -type f -name "${package}_*.ipk" -print -quit | grep -q .; then
+              echo "::error::standalone package ${package} was not built"
+              exit 1
+            fi
           done
 
       - name: Check space usage
@@ -425,10 +413,35 @@ jobs:
         id: organize
         if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
         run: |
-          cd openwrt/bin/targets/*/*
-          rm -rf packages
-          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+          TARGET_DIR="$(find openwrt/bin/targets -mindepth 2 -maxdepth 2 -type d -print -quit)"
+          if [ -z "$TARGET_DIR" ]; then
+            echo "::error::OpenWrt target directory was not found"
+            exit 1
+          fi
+          FIRMWARE_DIR="$GITHUB_WORKSPACE/firmware-artifact"
+          rm -rf "$FIRMWARE_DIR"
+          mkdir -p "$FIRMWARE_DIR"
+          find "$TARGET_DIR" -maxdepth 1 -type f -exec cp -t "$FIRMWARE_DIR" {} +
+          echo "FIRMWARE=$FIRMWARE_DIR" >> $GITHUB_ENV
           echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Package standalone IPK repository
+        if: steps.compile.outputs.status == 'success' && !cancelled()
+        run: |
+          cd openwrt
+          PACKAGE_DIR="$GITHUB_WORKSPACE/standalone-packages"
+          bash "$GITHUB_WORKSPACE/scripts/build-standalone-packages.sh" "$GITHUB_WORKSPACE/openwrt" "$PACKAGE_DIR"
+          cp .config "$PACKAGE_DIR/config"
+          find bin/targets -type f \( -name config.buildinfo -o -name feeds.buildinfo \) -exec cp {} "$PACKAGE_DIR/" \; 2>/dev/null || true
+          tar -czf "$GITHUB_WORKSPACE/OpenWrt_packages${DEVICE_NAME}${CFG_SUFFIX}${FILE_DATE}.tar.gz" -C "$GITHUB_WORKSPACE" standalone-packages
+
+      - name: Upload standalone packages
+        uses: actions/upload-artifact@v7
+        if: steps.compile.outputs.status == 'success' && !cancelled()
+        with:
+          name: OpenWrt_packages${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}
+          path: |
+            OpenWrt_packages${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}.tar.gz
 
       # 同上：如出现 upload-artifact 的 Node.js 20 警告，可改为 @v6。
       - name: Upload firmware directory
