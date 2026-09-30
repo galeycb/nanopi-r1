@@ -1,0 +1,488 @@
+#
+# Copyright (c) 2019-2020 P3TERX <https://p3terx.com>
+#
+# This is free software, licensed under the MIT License.
+# See /LICENSE for more information.
+#
+# https://github.com/P3TERX/Actions-OpenWrt
+# Description: Build OpenWrt using GitHub Actions
+#
+# 基于 Build_x86_64_test 的完整功能版本：
+# 1. 固定使用 lean_orig_x64.config；
+# 2. 固定启用 wrtbwmon 和 PassWall；
+# 3. 将原 standalone 包中的四个工具提升为 =y；
+# 4. 固定编入 Tailscale、TUN 和 jq，并检查 Tailscale 版本。
+#
+
+name: Build_x86_64_lean_IPTV
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      ssh:
+        description: 'SSH connection to Actions'
+        required: false
+        default: 'false'
+      enable_autosamba:
+        description: 'Enable autosamba/KSMBD'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      enable_ftp:
+        description: 'Enable FTP server (vsftpd)'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+  actions: write
+
+env:
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_BRANCH: master
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_PATH: configs
+  CONFIG_FILE: lean_orig_x64.config
+  DIY_P1_SH: diy-part1-wrtbwmon.sh
+  DIY_P2_SH: diy-part2.sh
+  UPLOAD_BIN_DIR: false
+  UPLOAD_FIRMWARE: true
+  UPLOAD_COWTRANSFER: false
+  UPLOAD_WETRANSFER: false
+  UPLOAD_RELEASE: false
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          preinstalled-runtimes: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+
+          # 关键修改：false 表示不删除 Swap 所占用的磁盘空间。
+          swap-storage: false
+
+      # checkout v5 已切换到 Node.js 24，适用于 GitHub 托管 Runner。
+      # 如果以后改为自托管 Runner，需要确保 Runner 版本不低于 v2.327.1。
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Initialization environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install \
+            ack antlr3 asciidoc autoconf automake autopoint binutils bison \
+            build-essential bzip2 ccache cmake cpio curl device-tree-compiler \
+            fastjar flex gawk gettext gcc-multilib g++-multilib git gperf \
+            haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev \
+            libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev \
+            libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev \
+            libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full \
+            patch pkgconf python3 python3-pyelftools python3-setuptools qemu-utils \
+            rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl \
+            unzip vim wget xmlto xxd zlib1g-dev
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          sudo timedatectl set-timezone "$TZ"
+          sudo mkdir -p /workdir
+          sudo chown $USER:$GROUPS /workdir
+
+      - name: Check runner resources
+        run: |
+          echo "===== CPU ====="
+          nproc
+          echo "===== Memory ====="
+          free -h
+          echo "===== Swap ====="
+          swapon --show || true
+          echo "===== Disk ====="
+          df -hT
+
+      - name: Clone source code
+        working-directory: /workdir
+        run: |
+          df -hT $PWD
+          git clone $REPO_URL -b $REPO_BRANCH openwrt
+          ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+          cd openwrt
+          echo "===== LEDE source revision ====="
+          git rev-parse HEAD
+          git log -1 --oneline
+
+      - name: Load custom feeds
+        run: |
+          [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+          chmod +x $DIY_P1_SH
+          cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P1_SH
+
+      - name: Update feeds
+        run: cd openwrt && ./scripts/feeds update -a
+
+      - name: Install feeds
+        run: cd openwrt && ./scripts/feeds install -a
+
+      - name: Check Tailscale version
+        run: |
+          cd openwrt
+          TAILSCALE_MAKEFILE="$(find feeds package/feeds package -path '*/tailscale/Makefile' -print -quit 2>/dev/null || true)"
+          if [ -z "$TAILSCALE_MAKEFILE" ]; then
+            echo "::error::Tailscale package Makefile was not found after feeds installation"
+            exit 1
+          fi
+          TAILSCALE_VERSION="$(sed -n 's/^PKG_VERSION:=//p' "$TAILSCALE_MAKEFILE" | head -n 1)"
+          if [ -z "$TAILSCALE_VERSION" ]; then
+            echo "::error::Could not read Tailscale PKG_VERSION from $TAILSCALE_MAKEFILE"
+            exit 1
+          fi
+          echo "Tailscale package: $TAILSCALE_MAKEFILE"
+          echo "Tailscale version: $TAILSCALE_VERSION"
+          if [ "$(printf '%s\n' '1.80.0' "$TAILSCALE_VERSION" | sort -V | head -n 1)" != '1.80.0' ]; then
+            echo "::error::Tailscale $TAILSCALE_VERSION is older than the required minimum 1.80.0"
+            exit 1
+          fi
+          grep -Eq '^[[:space:]]*PROVIDES:=.*tailscaled' "$TAILSCALE_MAKEFILE" || {
+            echo "::error::The Tailscale package does not provide tailscaled"
+            exit 1
+          }
+          grep -Eq 'tailscaled.*\$\(1\)/usr/sbin' "$TAILSCALE_MAKEFILE" || {
+            echo "::error::The Tailscale package does not install the tailscaled service binary"
+            exit 1
+          }
+
+      - name: Load custom configuration
+        run: |
+          [ -e files ] && mv files openwrt/files
+          [ -e ${CONFIG_PATH}/${CONFIG_FILE} ] && mv ${CONFIG_PATH}/${CONFIG_FILE} openwrt/.config
+          chmod +x $DIY_P2_SH
+          cd openwrt
+          $GITHUB_WORKSPACE/$DIY_P2_SH
+
+      - name: Enable wrtbwmon packages
+        run: |
+          cat >> openwrt/.config <<'EOF'
+          CONFIG_PACKAGE_luci-app-wrtbwmon=y
+          CONFIG_PACKAGE_luci-i18n-wrtbwmon-zh-cn=y
+          CONFIG_PACKAGE_wrtbwmon=y
+          CONFIG_PACKAGE_kmod-nft-compat=y
+          CONFIG_PACKAGE_iptables=y
+          CONFIG_PACKAGE_ip6tables=y
+          EOF
+
+      - name: Enable PassWall packages
+        run: |
+          cat >> openwrt/.config <<'EOF'
+          CONFIG_PACKAGE_luci-app-passwall=y
+          CONFIG_PACKAGE_luci-i18n-passwall-zh-cn=y
+          CONFIG_PACKAGE_luci-app-passwall_Transparent_Proxy=y
+          CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ChinaDNS_NG=y
+          CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Client=y
+          CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray=y
+          CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Trojan_Plus=y
+          EOF
+
+      - name: Enable full built-in package set
+        run: |
+          # Promote only the four packages previously built as standalone IPKs.
+          sed -i -E \
+            -e '/^CONFIG_PACKAGE_(conntrack|tcpdump|ethtool|iperf3)=/d' \
+            -e '/^# CONFIG_PACKAGE_(conntrack|tcpdump|ethtool|iperf3) is not set$/d' \
+            openwrt/.config
+          cat >> openwrt/.config <<'EOF'
+          CONFIG_PACKAGE_conntrack=y
+          CONFIG_PACKAGE_tcpdump=y
+          CONFIG_PACKAGE_ethtool=y
+          CONFIG_PACKAGE_iperf3=y
+          CONFIG_PACKAGE_tailscale=y
+          CONFIG_PACKAGE_kmod-tun=y
+          CONFIG_PACKAGE_jq=y
+          EOF
+
+      - name: Enable FTP packages
+        if: github.event.inputs.enable_ftp == 'true'
+        run: |
+          cat >> openwrt/.config <<'EOF'
+          CONFIG_DEFAULT_luci-app-vsftpd=y
+          CONFIG_PACKAGE_luci-app-vsftpd=y
+          CONFIG_PACKAGE_luci-i18n-vsftpd-zh-cn=y
+          # CONFIG_PACKAGE_vsftpd is not set
+          CONFIG_PACKAGE_vsftpd-alt=y
+          CONFIG_VSFTPD_USE_UCI_SCRIPTS=y
+          # CONFIG_PACKAGE_vsftpd-tls is not set
+          EOF
+
+      - name: Disable autosamba/KSMBD packages
+        if: github.event.inputs.enable_autosamba != 'true'
+        run: |
+          sed -i \
+            -e '/^CONFIG_DEFAULT_autosamba=/d' \
+            -e '/^# CONFIG_DEFAULT_autosamba is not set/d' \
+            -e '/^CONFIG_PACKAGE_autosamba/d' \
+            -e '/^# CONFIG_PACKAGE_autosamba/d' \
+            -e '/^CONFIG_PACKAGE_kmod-fs-ksmbd=/d' \
+            -e '/^# CONFIG_PACKAGE_kmod-fs-ksmbd is not set/d' \
+            -e '/^CONFIG_PACKAGE_luci-app-ksmbd=/d' \
+            -e '/^# CONFIG_PACKAGE_luci-app-ksmbd is not set/d' \
+            -e '/^CONFIG_PACKAGE_luci-i18n-ksmbd-/d' \
+            -e '/^# CONFIG_PACKAGE_luci-i18n-ksmbd-/d' \
+            -e '/^CONFIG_PACKAGE_ksmbd-/d' \
+            -e '/^# CONFIG_PACKAGE_ksmbd-/d' \
+            -e '/^CONFIG_PACKAGE_wsdd2=/d' \
+            -e '/^# CONFIG_PACKAGE_wsdd2 is not set/d' \
+            openwrt/.config
+          cat >> openwrt/.config <<'EOF'
+          # CONFIG_DEFAULT_autosamba is not set
+          # CONFIG_PACKAGE_autosamba is not set
+          # CONFIG_PACKAGE_autosamba_INCLUDE_KSMBD is not set
+          # CONFIG_PACKAGE_kmod-fs-ksmbd is not set
+          # CONFIG_PACKAGE_luci-app-ksmbd is not set
+          # CONFIG_PACKAGE_luci-i18n-ksmbd-zh-cn is not set
+          # CONFIG_PACKAGE_ksmbd-avahi-service is not set
+          # CONFIG_PACKAGE_ksmbd-hotplug is not set
+          # CONFIG_PACKAGE_ksmbd-server is not set
+          # CONFIG_PACKAGE_ksmbd-utils is not set
+          # CONFIG_PACKAGE_wsdd2 is not set
+          EOF
+
+      - name: Show selected configuration
+        run: |
+          echo "Target selection:"
+          grep '^CONFIG_TARGET.*=y' openwrt/.config | head -50 || true
+          echo "Optional packages:"
+          grep '^CONFIG_PACKAGE_luci-app-wrtbwmon=y' openwrt/.config || true
+          grep '^CONFIG_PACKAGE_luci-app-passwall=y' openwrt/.config || true
+          grep -E '^CONFIG_PACKAGE_(tailscale|kmod-tun|jq)=y$' openwrt/.config || true
+          grep '^CONFIG_PACKAGE_luci-app-vsftpd=y' openwrt/.config || true
+          grep '^CONFIG_PACKAGE_luci-app-ssr-plus=y' openwrt/.config || true
+          grep -E '^(CONFIG_PACKAGE_autosamba=y|# CONFIG_PACKAGE_autosamba is not set)' openwrt/.config || true
+
+      - name: Set firmware suffix
+        run: |
+          echo "CFG_SUFFIX=_lean_IPTV" >> $GITHUB_ENV
+
+      - name: SSH connection to Actions
+        uses: P3TERX/ssh2actions@v1.0.0
+        if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh != 'false') || contains(github.event.action, 'ssh')
+        env:
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
+      - name: Download package
+        id: package
+        run: |
+          cd openwrt
+          make defconfig
+          echo "Final autosamba/KSMBD selection:"
+          grep -E '^(CONFIG_PACKAGE_autosamba=y|# CONFIG_PACKAGE_autosamba is not set)' .config || true
+          grep -E '^(CONFIG_PACKAGE_luci-app-ksmbd=y|# CONFIG_PACKAGE_luci-app-ksmbd is not set)' .config || true
+          grep -E '^(CONFIG_PACKAGE_ksmbd-server=y|# CONFIG_PACKAGE_ksmbd-server is not set)' .config || true
+          grep -E '^(CONFIG_PACKAGE_wsdd2=y|# CONFIG_PACKAGE_wsdd2 is not set)' .config || true
+          echo "Final required package selection:"
+          grep -q '^CONFIG_PACKAGE_kmod-wireguard=y$' .config
+          grep -q '^CONFIG_PACKAGE_wireguard-tools=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-proto-wireguard=y$' .config
+          grep -q '^CONFIG_PACKAGE_iptables-mod-nat-extra=y$' .config
+          grep -q '^CONFIG_PACKAGE_kmod-ipt-nat-extra=y$' .config
+          grep -q '^CONFIG_PACKAGE_etherwake=y$' .config
+          grep -q '^CONFIG_PACKAGE_luci-app-wol=y$' .config
+          grep -q '^CONFIG_PACKAGE_ip-full=y$' .config
+          echo "Checking promoted built-in package selections:"
+          for package in conntrack tcpdump ethtool iperf3 tailscale kmod-tun jq luci-app-wrtbwmon luci-i18n-wrtbwmon-zh-cn wrtbwmon luci-app-passwall luci-i18n-passwall-zh-cn; do
+            grep -q "^CONFIG_PACKAGE_${package}=y$" .config
+          done
+          make download -j8
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+          echo "===== Resources after download ====="
+          free -h
+          swapon --show || true
+          df -hT
+          du -sh dl build_dir staging_dir 2>/dev/null || true
+
+      # ============================================================
+      # 临时诊断步骤：每 60 秒输出一次资源状态。
+      #
+      # 当前建议：
+      #   先保留此步骤，再连续成功编译 2～3 次。
+      #
+      # 后续精简方法：
+      #   如果连续编译稳定，可把从下面的
+      #     - name: Start resource monitor
+      #   到该步骤末尾的整个 YAML 块删除。
+      #
+      # 删除本步骤不会影响 OpenWrt 编译，只会减少 Actions 日志。
+      # 编译前、编译后的 free/swapon/df 检查仍会保留。
+      # ============================================================
+      - name: Start resource monitor
+        run: |
+          (
+            while true; do
+              echo "===== RESOURCE $(date -u '+%Y-%m-%d %H:%M:%S UTC') ====="
+              free -h
+              swapon --show || true
+              df -h /
+              uptime
+              ps -eo pid,ppid,comm,%cpu,%mem,rss --sort=-rss | head -15
+              sleep 60
+            done
+          ) &
+
+      - name: Compile the firmware
+        id: compile
+        run: |
+          cd openwrt
+
+          echo "===== Compile settings ====="
+          echo "$(nproc) thread compile"
+          free -h
+          swapon --show || true
+          df -hT
+
+          # 保留原来的全核编译方式。
+          # 此处不再自动执行 make -j1 重试，确保首个失败原因清晰可见。
+          make -j$(nproc)
+
+          echo "status=success" >> $GITHUB_OUTPUT
+          grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+          [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+          echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+      - name: Verify required firmware contents
+        if: steps.compile.outputs.status == 'success'
+        run: |
+          cd openwrt
+          MANIFEST="$(find bin/targets -type f -name '*.manifest' -print -quit)"
+          if [ -z "$MANIFEST" ]; then
+            echo "::error::OpenWrt firmware manifest was not generated"
+            exit 1
+          fi
+          echo "Checking required packages in $MANIFEST"
+          for package in kmod-wireguard wireguard-tools luci-proto-wireguard iptables-mod-nat-extra kmod-ipt-nat-extra etherwake luci-app-wol ip-full luci-app-wrtbwmon luci-i18n-wrtbwmon-zh-cn wrtbwmon luci-app-passwall luci-i18n-passwall-zh-cn tailscale kmod-tun jq; do
+            if ! grep -Eq "^${package}([[:space:]]|$)" "$MANIFEST"; then
+              echo "::error::${package} is missing from the firmware manifest"
+              exit 1
+            fi
+            find bin -type f \( -name "*${package}*.ipk" -o -name "*${package}*.apk" \) -print | head -1
+          done
+
+      - name: Check space usage
+        if: (!cancelled())
+        run: |
+          df -hT
+          free -h
+          swapon --show || true
+
+      # 后续维护建议：
+      # 若这里以后也出现 Node.js 20 警告，可将 @main 固定为 @v6。
+      # 当前先不改动上传逻辑，以减少本次对照版本的变量。
+      - name: Upload bin directory
+        uses: actions/upload-artifact@main
+        if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+        with:
+          name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}
+          path: openwrt/bin
+
+      - name: Organize files
+        id: organize
+        if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+        run: |
+          TARGET_DIR="$(find openwrt/bin/targets -mindepth 2 -maxdepth 2 -type d -print -quit)"
+          if [ -z "$TARGET_DIR" ]; then
+            echo "::error::OpenWrt target directory was not found"
+            exit 1
+          fi
+          FIRMWARE_DIR="$GITHUB_WORKSPACE/firmware-artifact"
+          rm -rf "$FIRMWARE_DIR"
+          mkdir -p "$FIRMWARE_DIR"
+          find "$TARGET_DIR" -maxdepth 1 -type f -exec cp -t "$FIRMWARE_DIR" {} +
+          echo "FIRMWARE=$FIRMWARE_DIR" >> $GITHUB_ENV
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      # 同上：如出现 upload-artifact 的 Node.js 20 警告，可改为 @v6。
+      - name: Upload firmware directory
+        uses: actions/upload-artifact@main
+        if: steps.organize.outputs.status == 'success' && !cancelled()
+        with:
+          name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}
+          path: ${{ env.FIRMWARE }}
+
+      - name: Upload firmware to cowtransfer
+        id: cowtransfer
+        if: steps.organize.outputs.status == 'success' && env.UPLOAD_COWTRANSFER == 'true' && !cancelled()
+        run: |
+          curl -fsSL git.io/file-transfer | sh
+          tar -czf firmware${CFG_SUFFIX}.tar.gz -C "$(dirname "$FIRMWARE")" "$(basename "$FIRMWARE")"
+          ./transfer cow --block 2621440 -s -p 64 --no-progress firmware${CFG_SUFFIX}.tar.gz 2>&1 | tee cowtransfer.log
+          echo "::warning file=cowtransfer.com::$(cat cowtransfer.log | grep https)"
+          echo "url=$(cat cowtransfer.log | grep https | cut -f3 -d' ')" >> $GITHUB_OUTPUT
+
+      - name: Upload firmware to WeTransfer
+        id: wetransfer
+        if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
+        run: |
+          curl -fsSL git.io/file-transfer | sh
+          tar -czf firmware${CFG_SUFFIX}.tar.gz -C "$(dirname "$FIRMWARE")" "$(basename "$FIRMWARE")"
+          ./transfer wet -s -p 16 --no-progress firmware${CFG_SUFFIX}.tar.gz 2>&1 | tee wetransfer.log
+          echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
+          echo "url=$(cat wetransfer.log | grep https | cut -f3 -d' ')" >> $GITHUB_OUTPUT
+
+      - name: Generate release tag
+        id: tag
+        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        run: |
+          echo "release_tag=$(date +"%Y.%m.%d-%H%M")${CFG_SUFFIX}" >> $GITHUB_OUTPUT
+          touch release.txt
+          [ $UPLOAD_COWTRANSFER = true ] && echo "🔗 [Cowtransfer](${{ steps.cowtransfer.outputs.url }})" >> release.txt
+          [ $UPLOAD_WETRANSFER = true ] && echo "🔗 [WeTransfer](${{ steps.wetransfer.outputs.url }})" >> release.txt
+          echo "status=success" >> $GITHUB_OUTPUT
+
+      - name: Upload firmware to release
+        uses: softprops/action-gh-release@v1
+        if: steps.tag.outputs.status == 'success' && !cancelled()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          body_path: release.txt
+          files: ${{ env.FIRMWARE }}/*
+
+      - name: Delete workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        continue-on-error: true
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        with:
+          token: ${{ github.token }}
+          retain_days: 90
+          keep_minimum_runs: 10
+          delete_workflow_pattern: ^Build_x86_64_test$
+          repository: ${{ github.repository }}
+
+      - name: Remove old Releases
+        uses: dev-drprasad/delete-older-releases@master
+        if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+        with:
+          keep_latest: 3
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
