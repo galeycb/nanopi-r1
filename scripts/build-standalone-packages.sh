@@ -11,7 +11,6 @@ mkdir -p "$FEED_DIR"
 
 requested_packages=(
   tcpdump
-  ethtool
   iperf3
 )
 
@@ -114,7 +113,7 @@ On the OpenWrt device, extract this archive and add the local feed temporarily:
 
   echo 'src/gz codex_standalone file:///tmp/standalone-packages/feed' >> /etc/opkg/customfeeds.conf
   opkg update
-  opkg install tcpdump ethtool iperf3
+  opkg install tcpdump iperf3
 
 The feed directory contains Packages and Packages.gz for dependency resolution.
 The config file records the firmware build configuration used for this package set.

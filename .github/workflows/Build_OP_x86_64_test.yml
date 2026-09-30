@@ -301,7 +301,7 @@ jobs:
           grep -q '^CONFIG_PACKAGE_luci-app-wol=y$' .config
           grep -q '^CONFIG_PACKAGE_ip-full=y$' .config
           echo "Checking standalone package selections:"
-          for package in tcpdump ethtool iperf3; do
+          for package in tcpdump iperf3; do
             selection="$(grep -E "^CONFIG_PACKAGE_${package}=|^# CONFIG_PACKAGE_${package} is not set$" .config || true)"
             echo "${package}: ${selection:-not set}"
             if [ "$selection" != "CONFIG_PACKAGE_${package}=m" ]; then
@@ -385,7 +385,7 @@ jobs:
             find bin -type f \( -name "*${package}*.ipk" -o -name "*${package}*.apk" \) -print | head -1
           done
           echo "Checking standalone packages are not included in the firmware"
-          for package in tcpdump ethtool iperf3; do
+          for package in tcpdump iperf3; do
             if grep -Eq "^${package}([[:space:]]|$)" "$MANIFEST"; then
               echo "::error::${package} unexpectedly appears in the firmware manifest"
               exit 1
