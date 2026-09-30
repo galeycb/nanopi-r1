@@ -302,7 +302,12 @@ jobs:
           grep -q '^CONFIG_PACKAGE_ip-full=y$' .config
           echo "Checking standalone package selections:"
           for package in tcpdump ethtool iperf3; do
-            grep -q "^CONFIG_PACKAGE_${package}=m$" .config
+            selection="$(grep -E "^CONFIG_PACKAGE_${package}=|^# CONFIG_PACKAGE_${package} is not set$" .config || true)"
+            echo "${package}: ${selection:-not set}"
+            if [ "$selection" != "CONFIG_PACKAGE_${package}=m" ]; then
+              echo "::error::${package} must remain =m for standalone packaging"
+              exit 1
+            fi
           done
           make download -j8
           find dl -size -1024c -exec ls -l {} \;
