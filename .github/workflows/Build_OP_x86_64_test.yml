@@ -297,12 +297,11 @@ jobs:
           grep -q '^CONFIG_PACKAGE_luci-proto-wireguard=y$' .config
           grep -q '^CONFIG_PACKAGE_iptables-mod-nat-extra=y$' .config
           grep -q '^CONFIG_PACKAGE_kmod-ipt-nat-extra=y$' .config
-          grep -q '^CONFIG_PACKAGE_curl=y$' .config
           grep -q '^CONFIG_PACKAGE_etherwake=y$' .config
           grep -q '^CONFIG_PACKAGE_luci-app-wol=y$' .config
           grep -q '^CONFIG_PACKAGE_ip-full=y$' .config
           echo "Checking standalone package selections:"
-          for package in conntrack tcpdump ethtool iperf3 ca-bundle ca-certificates; do
+          for package in conntrack tcpdump ethtool iperf3; do
             grep -q "^CONFIG_PACKAGE_${package}=m$" .config
           done
           make download -j8
@@ -373,7 +372,7 @@ jobs:
             exit 1
           fi
           echo "Checking required packages in $MANIFEST"
-          for package in kmod-wireguard wireguard-tools luci-proto-wireguard iptables-mod-nat-extra kmod-ipt-nat-extra curl etherwake luci-app-wol ip-full; do
+          for package in kmod-wireguard wireguard-tools luci-proto-wireguard iptables-mod-nat-extra kmod-ipt-nat-extra etherwake luci-app-wol ip-full; do
             if ! grep -Eq "^${package}([[:space:]]|$)" "$MANIFEST"; then
               echo "::error::${package} is missing from the firmware manifest"
               exit 1
@@ -381,7 +380,7 @@ jobs:
             find bin -type f \( -name "*${package}*.ipk" -o -name "*${package}*.apk" \) -print | head -1
           done
           echo "Checking standalone packages are not included in the firmware"
-          for package in conntrack tcpdump ethtool iperf3 ca-bundle ca-certificates; do
+          for package in conntrack tcpdump ethtool iperf3; do
             if grep -Eq "^${package}([[:space:]]|$)" "$MANIFEST"; then
               echo "::error::${package} unexpectedly appears in the firmware manifest"
               exit 1
