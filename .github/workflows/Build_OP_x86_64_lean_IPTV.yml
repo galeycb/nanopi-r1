@@ -10,7 +10,7 @@
 # 基于 Build_x86_64_test 的完整功能版本：
 # 1. 固定使用 lean_orig_x64.config；
 # 2. 固定启用 wrtbwmon 和 PassWall；
-# 3. 将原 standalone 包中的四个工具提升为 =y；
+# 3. 将原 standalone 包中的三个工具提升为 =y；
 # 4. 固定编入 Tailscale、TUN 和 jq，并检查 Tailscale 版本。
 #
 
@@ -203,13 +203,12 @@ jobs:
 
       - name: Enable full built-in package set
         run: |
-          # Promote only the four packages previously built as standalone IPKs.
+          # Promote only the three packages previously built as standalone IPKs.
           sed -i -E \
-            -e '/^CONFIG_PACKAGE_(conntrack|tcpdump|ethtool|iperf3)=/d' \
-            -e '/^# CONFIG_PACKAGE_(conntrack|tcpdump|ethtool|iperf3) is not set$/d' \
+            -e '/^CONFIG_PACKAGE_(tcpdump|ethtool|iperf3)=/d' \
+            -e '/^# CONFIG_PACKAGE_(tcpdump|ethtool|iperf3) is not set$/d' \
             openwrt/.config
           cat >> openwrt/.config <<'EOF'
-          CONFIG_PACKAGE_conntrack=y
           CONFIG_PACKAGE_tcpdump=y
           CONFIG_PACKAGE_ethtool=y
           CONFIG_PACKAGE_iperf3=y
@@ -315,7 +314,8 @@ jobs:
           grep -q '^CONFIG_PACKAGE_ip-full=y$' .config
           grep -q '^CONFIG_TARGET_ROOTFS_PARTSIZE=1024$' .config
           echo "Checking promoted built-in package selections:"
-          for package in conntrack tcpdump ethtool iperf3 tailscale kmod-tun jq luci-app-wrtbwmon luci-i18n-wrtbwmon-zh-cn wrtbwmon luci-app-passwall luci-i18n-passwall-zh-cn; do
+          grep -q '^CONFIG_PACKAGE_conntrack=y$' .config
+          for package in tcpdump ethtool iperf3 tailscale kmod-tun jq luci-app-wrtbwmon luci-i18n-wrtbwmon-zh-cn wrtbwmon luci-app-passwall luci-i18n-passwall-zh-cn; do
             grep -q "^CONFIG_PACKAGE_${package}=y$" .config
           done
           make download -j8
