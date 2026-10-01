@@ -172,7 +172,7 @@ while ((${#queue[@]} > 0)); do
       candidate="$(printf '%s\n' "$alternative" | trim)"
       candidate="${candidate#+}"
       [ -n "$candidate" ] || continue
-      candidate_ipk="$(find_ipk "$candidate")"
+      candidate_ipk="$(find_package "$candidate")"
       if is_in_firmware "$candidate" || [ -n "$candidate_ipk" ]; then
         dependency="$candidate"
         break

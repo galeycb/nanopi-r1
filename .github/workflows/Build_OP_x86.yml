@@ -345,7 +345,7 @@ jobs:
 
     - name: Organize files
       id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
           TARGET_DIR="$(find openwrt/bin/targets -mindepth 2 -maxdepth 2 -type d -print -quit)"
           if [ -z "$TARGET_DIR" ]; then
