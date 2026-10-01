@@ -264,6 +264,7 @@ jobs:
       id: package
       run: |
         cd openwrt
+        echo "dns2socks_fallback=false" >> "$GITHUB_OUTPUT"
         make defconfig
         echo "Final autosamba/KSMBD selection:"
         grep -E '^(CONFIG_PACKAGE_autosamba=y|# CONFIG_PACKAGE_autosamba is not set)' .config || true
@@ -297,9 +298,11 @@ jobs:
             echo "::error::Package download failed for a package other than dns2socks"
             exit "$download_status"
           fi
-          echo "::warning::dns2socks download failed; retrying with the fixed GitHub source mirror"
+          echo "dns2socks_fallback=true" >> "$GITHUB_OUTPUT"
+          echo "::warning title=dns2socks source fallback::SourceForge download failed for dns2socks; retrying with the fixed GitHub source"
           bash "$GITHUB_WORKSPACE/scripts/patch-dns2socks-github-source.sh" "$GITHUB_WORKSPACE/openwrt"
           make download -j1 V=s
+          echo "::notice title=dns2socks fallback download succeeded::The GitHub fallback source was downloaded successfully; continuing with the firmware build"
         fi
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
@@ -314,6 +317,11 @@ jobs:
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+    - name: Report dns2socks fallback result
+      if: steps.compile.outputs.status == 'success' && steps.package.outputs.dns2socks_fallback == 'true'
+      run: |
+        echo "::notice title=dns2socks fallback completed::SourceForge download failed, the GitHub fallback was downloaded, and the firmware compiled successfully"
 
     - name: Verify required firmware contents
       if: steps.compile.outputs.status == 'success'
