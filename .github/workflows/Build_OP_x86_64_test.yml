@@ -309,7 +309,19 @@ jobs:
               exit 1
             fi
           done
-          make download -j8
+          set +e
+          make download -j8 2>&1 | tee download.log
+          download_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$download_status" -ne 0 ]; then
+            if ! grep -Eq 'package/(feeds/[^/]+/)?dns2socks failed to build|dns2socks[^[:space:]]*[[:space:]]+(failed|error|unable)' download.log; then
+              echo "::error::Package download failed for a package other than dns2socks"
+              exit "$download_status"
+            fi
+            echo "::warning::dns2socks download failed; retrying with the fixed GitHub source mirror"
+            bash "$GITHUB_WORKSPACE/scripts/patch-dns2socks-github-source.sh" "$GITHUB_WORKSPACE/openwrt"
+            make download -j1 V=s
+          fi
           find dl -size -1024c -exec ls -l {} \;
           find dl -size -1024c -exec rm -f {} \;
 
