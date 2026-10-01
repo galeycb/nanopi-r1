@@ -390,7 +390,7 @@ jobs:
               echo "::error::${package} unexpectedly appears in the firmware manifest"
               exit 1
             fi
-            if ! find bin -type f -name "${package}_*.ipk" -print -quit | grep -q .; then
+            if ! find bin -type f \( -name "${package}_*.ipk" -o -name "${package}_*.apk" \) -print -quit | grep -q .; then
               echo "::error::standalone package ${package} was not built"
               exit 1
             fi
@@ -430,6 +430,7 @@ jobs:
           echo "status=success" >> $GITHUB_OUTPUT
 
       - name: Package standalone IPK repository
+        id: standalone
         if: steps.compile.outputs.status == 'success' && !cancelled()
         run: |
           cd openwrt
@@ -441,7 +442,7 @@ jobs:
 
       - name: Upload standalone packages
         uses: actions/upload-artifact@v7
-        if: steps.compile.outputs.status == 'success' && !cancelled()
+        if: steps.standalone.outcome == 'success' && !cancelled()
         with:
           name: OpenWrt_packages${{ env.DEVICE_NAME }}${{ env.CFG_SUFFIX }}${{ env.FILE_DATE }}
           path: |
