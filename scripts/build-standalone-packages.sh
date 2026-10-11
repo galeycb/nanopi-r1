@@ -190,7 +190,16 @@ while ((${#queue[@]} > 0)); do
   done < <(printf '%s' "$depends" | tr ',' '\n')
 done
 
-bash "$SOURCE_DIR/scripts/ipkg-make-index.sh" "$FEED_DIR" > "$FEED_DIR/Packages"
+MKHASH_BIN="${MKHASH:-$SOURCE_DIR/staging_dir/host/bin/mkhash}"
+if [[ "$MKHASH_BIN" != */* ]]; then
+  MKHASH_BIN="$(command -v "$MKHASH_BIN" || true)"
+fi
+if [ ! -x "$MKHASH_BIN" ]; then
+  echo "::error::OpenWrt mkhash was not found; expected $SOURCE_DIR/staging_dir/host/bin/mkhash"
+  exit 1
+fi
+
+MKHASH="$MKHASH_BIN" bash "$SOURCE_DIR/scripts/ipkg-make-index.sh" "$FEED_DIR" > "$FEED_DIR/Packages"
 gzip -9fc "$FEED_DIR/Packages" > "$FEED_DIR/Packages.gz"
 
 cat > "$OUTPUT_DIR/README.txt" <<'EOF'
